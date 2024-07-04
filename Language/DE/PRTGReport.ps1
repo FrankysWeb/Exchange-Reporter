@@ -1,0 +1,1 @@
+$l_prtg_header		=		"PRTG Monitoring Daten"

@@ -1,0 +1,7 @@
+$l_rbl_header 				=	"SPAM Blacklist overview"
+$l_rbl_blname				=	"Blacklist Name"
+$l_rbl_ip					=	"IP Address"
+$l_rbl_bllist				=	"IP is blacklisted?"
+$l_rbl_header2				=	"Blacklist query for"
+$l_rbl_yes					=	"Yes"
+$l_rbl_no					=	"No"

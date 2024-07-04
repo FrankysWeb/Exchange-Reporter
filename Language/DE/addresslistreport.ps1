@@ -1,0 +1,8 @@
+$l_addresslist_header		=	"Adresslisten"
+$l_addresslist_name			=	"Name"
+$l_addresslist_hasmember	=	"Hat Einträge?"
+$l_addresslist_membercount	=	"Anzahl Einträge"
+$l_addresslist_t1header		=	"Übersicht Adresslisten"
+$l_addresslist_t2header		=	"Übersicht Einträge für"
+$l_addresslist_memberyes	=	"Ja"
+$l_addresslist_memberno		=	"Nein"
