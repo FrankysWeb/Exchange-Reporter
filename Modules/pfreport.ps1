@@ -68,7 +68,7 @@ if ($emsversion -match "2013" -or $emsversion -match "2016" -or $emsversion -mat
 		foreach ($pf in $pfs)
 			{
 				$pfname = $pf.name
-				$pdid = $pf.EntryId
+				$pfid = $pf.EntryId
 				$pfdb = (get-publicfolder $pfid).contentmailboxname
 				$pfsize = $pf.TotalItemSize
 				$pfitemcount = $pf.ItemCount
