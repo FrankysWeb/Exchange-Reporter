@@ -32,11 +32,10 @@ foreach ($mailbox in $allmbx)
 						$rightsreport += New-HTMLTableLine $cells
 					}
 			}
-		$sendas = Get-ADPermission $mailbox.DistinguishedName | where {($_.ExtendedRights -like "*Send-As*") -and ($_.IsInherited -eq $false) -and -not ($_.User -like "NT AUTHORITY\SELF") -and -not ($_.User -like "NT-AUTORITÄT\SELBST")} 
+		$sendas = Get-ADPermission $mailbox.DistinguishedName | where {($_.ExtendedRights -like "*Send-As*") -and ($_.IsInherited -eq $false) -and -not ($_.User -like "NT AUTHORITY\SELF") -and -not ($_.User -like "NT-AUTORITÃ„T\SELBST")} 
 		if ($sendas)
 			{
-
-				foreach ($right in $rights)
+				foreach ($right in $sendas)
 					{
 						$username = $right.user.RawIdentity
 						$accessright = "$l_perm_sendas"
