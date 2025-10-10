@@ -12,28 +12,74 @@ if ($mailexclude)
 if ($emsversion -match "2016" -or $emsversion -match "2019")
 {
  $transportservers = Get-TransportService
- $SendMails = Get-TransportService | Get-MessageTrackingLog -Start $Start -end $End -EventId Send -ea 0 -resultsize unlimited | where {$_.Recipients -notmatch "HealthMailbox" -and $_.Sender -notmatch "MicrosoftExchange" -and $_.source -match "SMTP"} | select sender,Recipients,timestamp,totalbytes,clienthostname
- $ReceivedMails = Get-TransportService | Get-MessageTrackingLog -Start $Start -end $End -EventId Receive -ea 0 -resultsize unlimited | where {$_.Recipients -notmatch "HealthMailbox" -and $_.Sender -notmatch "MicrosoftExchange" -and $_.source -match "SMTP"} | select sender,Recipients,timestamp,totalbytes,serverhostname
 }
 
 if ($emsversion -match "2013")
 {
  $transportservers = Get-TransportService
- $SendMails = Get-TransportService | Get-MessageTrackingLog -Start $Start -end $End -EventId Send -ea 0 -resultsize unlimited | where {$_.Recipients -notmatch "HealthMailbox" -and $_.Sender -notmatch "MicrosoftExchange" -and $_.source -match "SMTP"} | select sender,Recipients,timestamp,totalbytes,clienthostname
- $ReceivedMails = Get-TransportService | Get-MessageTrackingLog -Start $Start -end $End -EventId Receive -ea 0 -resultsize unlimited | where {$_.Recipients -notmatch "HealthMailbox" -and $_.Sender -notmatch "MicrosoftExchange" -and $_.source -match "SMTP"} | select sender,Recipients,timestamp,totalbytes,serverhostname
 }
 
 if ($emsversion -match "2010")
 {
  $transportservers = Get-TransportServer
- $SendMails = Get-TransportServer | Get-MessageTrackingLog -Start $Start -end $End -EventId Send -ea 0 -resultsize unlimited | where {$_.Recipients -notmatch "HealthMailbox" -and $_.Sender -notmatch "MicrosoftExchange" -and $_.source -match "SMTP"} | select sender,Recipients,timestamp,totalbytes,clienthostname
- $ReceivedMails = Get-TransportServer | Get-MessageTrackingLog -Start $Start -end $End -EventId Receive -ea 0 -resultsize unlimited | where {$_.Recipients -notmatch "HealthMailbox" -and $_.Sender -notmatch "MicrosoftExchange" -and $_.source -match "SMTP"} | select sender,Recipients,timestamp,totalbytes,serverhostname
 }
+
+ Foreach ($transportserver in $transportservers) 
+	{
+        Start-Job -Name "$($transportserver.Name)_SendMails" -ScriptBlock {
+            $transportserver = $using:transportserver
+            $SMTPServer = $transportserver.Name
+            $Start = $Using:Start
+            $End = $Using:End
+
+            Add-Pssnapin *exchange*
+
+            $SendMails = Get-MessageTrackingLog -Start $Start -end $End -EventId Send -ea 0 -resultsize unlimited -Server $SMTPServer
+
+            Return $SendMails
+	    } | Out-Null
+	}
+
+While (Get-Job -State "Running")
+	{
+		Write-Host "$(Get-Date -Format 'yyyy.MM.dd HH:mm:ss.ffff')    Waiting for MessageTrackingLogs (SendMails) $((Get-Job -State "Completed").Count) / $((Get-Job).Count) ..."
+        Start-Sleep 60
+	}
+
+$SendMails = Get-Job -Name "*SendMails*" | Receive-Job
+$SendMails = $SendMails.where({$_.Recipients -notmatch "HealthMailbox" -and $_.Sender -notmatch "MicrosoftExchange" -and $_.source -match "SMTP";}) | select sender,Recipients,timestamp,totalbytes,clienthostname
+Get-Job | Remove-Job
+
+Foreach ($transportserver in $transportservers) 
+	{
+        Start-Job -Name "$($transportserver.Name)_ReceivedMails" -ScriptBlock {
+            $transportserver = $using:transportserver
+            $SMTPServer = $transportserver.Name
+            $Start = $Using:Start
+            $End = $Using:End
+
+            Add-Pssnapin *exchange*
+
+            $ReceivedMails = Get-MessageTrackingLog -Start $Start -end $End -EventId Receive -ea 0 -resultsize unlimited -Server $SMTPServer
+
+            Return $ReceivedMails
+	    } | Out-Null
+	}
+
+While (Get-Job -State "Running")
+	{
+		Write-Host "$(Get-Date -Format 'yyyy.MM.dd HH:mm:ss.ffff')    Waiting for MessageTrackingLogs (ReceivedMails) $((Get-Job -State "Completed").Count) / $((Get-Job).Count) ..."
+        Start-Sleep 60
+	}
+
+$ReceivedMails = Get-Job -Name "*ReceivedMails*" | Receive-Job
+$ReceivedMails = $ReceivedMails.where({$_.Recipients -notmatch "HealthMailbox" -and $_.Sender -notmatch "MicrosoftExchange" -and $_.source -match "SMTP";}) | select sender,Recipients,timestamp,totalbytes,serverhostname 
+Get-Job | Remove-Job
 
 if ($mailexclude)
 	{
-		foreach ($entry in $mailexclude) {$SendMails = $SendMails | where {$_.sender -notmatch $entry -and $_.recipients -notmatch $entry}}
-		foreach ($entry in $mailexclude) {$ReceivedMails = $ReceivedMails | where {$_.sender -notmatch $entry -and $_.recipients -notmatch $entry}}
+		foreach ($entry in $mailexclude) {$SendMails = $SendMails.where({$_.sender -notmatch $entry -and $_.recipients -notmatch $entry;})}
+		foreach ($entry in $mailexclude) {$ReceivedMails = $ReceivedMails.where({$_.sender -notmatch $entry -and $_.recipients -notmatch $entry;})}
 	}
 
 #Total
@@ -76,8 +122,8 @@ $perserverstats  = @()
 foreach ($transportserver in $transportservers)
 	{
 		$tpsname = $transportserver.name
-		$tpssend = $sendmails | where {$_.Clienthostname -match "$tpsname"} | measure-object Totalbytes -sum
-		$tpsreceive = $ReceivedMails | where {$_.serverhostname -match "$tpsname"} | measure-object Totalbytes -sum
+		$tpssend = $sendmails.where({$_.Clienthostname -match "$tpsname";}) | measure-object Totalbytes -sum
+		$tpsreceive = $ReceivedMails.where({$_.serverhostname -match "$tpsname";}) | measure-object Totalbytes -sum
 		$tpssendcount = $tpssend.count
 		$tpsreceivecount = $tpsreceive.count
 		
@@ -157,8 +203,8 @@ do
  $daystart = (Get-Date -Hour 00 -Minute 00 -Second 00).AddDays(-$daycounter)
  $dayend = (Get-Date -Hour 00 -Minute 00 -Second 00).AddDays(-$dayendcounter)
   
-  $DayReceivedMails = $ReceivedMails | where {$_.timestamp -ge $daystart -and $_.timestamp -le $dayend}
-  $DaySendMails = $sendmails | where {$_.timestamp -ge $daystart -and $_.timestamp -le $dayend}
+  $DayReceivedMails = $ReceivedMails.where({$_.timestamp -ge $daystart -and $_.timestamp -le $dayend;})
+  $DaySendMails = $sendmails.where({$_.timestamp -ge $daystart -and $_.timestamp -le $dayend;})
   
   $daytotalsendmail = $daysendmails | measure-object Totalbytes -sum
   $daytotalreceivedmail = $dayreceivedmails  | measure-object Totalbytes -sum
@@ -197,8 +243,8 @@ $receivedstat = $receivedMails | select sender,totalbytes
 $sendmails = $sendmails.sender
 $ReceivedMails = $ReceivedMails.Recipients
 
-$topsenders = $sendmails | Group-Object –noelement | Sort-Object Count -descending | Select-Object -first $DisplayTop
-$toprecipients = $ReceivedMails | Group-Object –noelement | Sort-Object Count -descending | Select-Object -first $DisplayTop
+$topsenders = $sendmails | Group-Object Â–noelement | Sort-Object Count -descending | Select-Object -first $DisplayTop
+$toprecipients = $ReceivedMails | Group-Object Â–noelement | Sort-Object Count -descending | Select-Object -first $DisplayTop
 
 $cells=@("$l_mail_sender","$l_mail_count")
 $mailreport += Generate-HTMLTable "Top $DisplayTop $l_mail_sender ($l_mail_count)" $cells
